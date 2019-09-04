@@ -7,8 +7,10 @@ package outfile
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -94,6 +96,7 @@ func (iter IterInfo) String() string {
 
 type FullInfo struct {
 	Iterations []IterInfo
+	TimePetsc  time.Duration
 }
 
 func (info FullInfo) reduceIterations(key func(IterInfo) time.Duration, op func(time.Duration, time.Duration) time.Duration) time.Duration {
@@ -167,7 +170,47 @@ func (info *FullInfo) Load(f string) error {
 		iter.Parse(data[begin : end+1])
 		info.Iterations = append(info.Iterations, iter)
 	}
+	for _, line := range data {
+		if strings.HasPrefix(line, "Time (sec):") {
+			line_info := strings.Fields(line[10:])
+			info.TimePetsc = time.Duration(0)
+			if len(line_info) > 1 {
+				f, _ := strconv.ParseFloat(line_info[1], 64)
+				sec := int64(math.Round(f))
+				info.TimePetsc, _ = time.ParseDuration(fmt.Sprintf("%ds", sec))
+				break
+			}
+		}
+	}
 	return nil
+}
+
+func (info *FullInfo) LoadJson(r io.Reader) error {
+	dec := json.NewDecoder(r)
+	return dec.Decode(info)
+}
+
+func (info *FullInfo) LoadJsonFile(f string) error {
+	file, err := os.Open(f)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return info.ToJson(file)
+}
+
+func (info *FullInfo) ToJson(w io.Writer) error {
+	enc := json.NewEncoder(w)
+	return enc.Encode(info)
+}
+
+func (info *FullInfo) ToJsonFile(f string) error {
+	file, err := os.Open(f)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return info.ToJson(file)
 }
 
 func GetRaw(r io.Reader) ([]string, error) {
